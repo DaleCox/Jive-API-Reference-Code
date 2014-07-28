@@ -1,0 +1,61 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+//http://json2csharp.com/ - made object model so much easier
+
+    public class JivePlaceList
+    {
+        public JivePlaceList() { }
+        public List<JivePlaceObject> list { get; set; }
+    }//end JivePlaceList
+
+    public class JivePlaceObject
+    {
+        public JivePlaceObject(){}
+        public string type { get; set; }
+        public bool visibleToExternalContributors { get; set; }
+        public JiveParentPlace parentPlace { get; set; }
+        public string followerCount { get; set; }
+        public string id { get; set; }
+        public string name { get; set; }
+        public string displayName { get; set; }
+        public string description { get; set; }
+        public Resources resources { get; set; }
+    }//end JivePlaceObject
+
+    public class JiveParentPlace
+    {
+        public JiveParentPlace() { }
+        public string name { get; set; }
+        public string id { get; set; }
+        string type { get; set; }
+        string html { get; set; }
+    }//end parentPlace
+
+    public class Resources
+    {
+        public JiveResource contents { get; set; }
+        public JiveResource announcements { get; set; }
+        public JiveResource self { get; set; }
+        public JiveResource html { get; set; }
+        public JiveResource categories { get; set; }
+        public JiveResource places { get; set; }
+        public JiveResource followingIn { get; set; }
+        public JiveResource blog { get; set; }
+        public JiveResource avatar { get; set; }
+        public JiveResource activity { get; set; }
+        public JiveResource invites { get; set; }
+        public JiveResource members { get; set; }
+        public JiveResource checkpoints { get; set; }
+        public JiveResource tasks { get; set; }
+    }
+
+    public class JiveResource
+    {
+        public JiveResource() { }
+        public string @ref { get; set; }
+        public List<string> allowed { get; set; }
+    }
+   
+

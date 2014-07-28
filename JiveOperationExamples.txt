@@ -1,0 +1,304 @@
+﻿using System;
+using System.Diagnostics;
+using System.Net;
+using System.ServiceModel;
+using System.ServiceModel.Activation;
+using System.ServiceModel.Web;
+using System.Text;
+using System.Collections.Generic;
+using System.Configuration;
+using System.Drawing;
+using System.IO;
+using UtilityLibrary;
+using System.ComponentModel;//description
+using System.Xml;
+using System.Web;
+
+
+        /// <summary>
+        /// Gets a list of all users in jive platform
+        /// </summary>
+        /// <returns>a list of users from jive</returns>
+        [WebGet(UriTemplate = "Users")]
+        public List<JivePersonObject> GetUsers()
+        {
+            int startIndex = 0;            
+            
+            List<JivePersonObject> deserialPersonList = new List<JivePersonObject>();
+            JivePersonList tempDeserialPersonList = new JivePersonList();
+            int loopCount = 0;//prevent endless loop
+
+            tempDeserialPersonList = getUsersPerPage(startIndex);
+            
+            while (loopCount <= 2000 && tempDeserialPersonList.list != null )
+            {
+
+                foreach (JivePersonObject deserialPerson in tempDeserialPersonList.list)
+                {                    
+                    if (deserialPerson.jive.profile == null)
+                        deserialPerson.jive.profile = new JiveProfiles[0]; 
+
+                    deserialPersonList.Add(deserialPerson);
+                }
+
+                if (tempDeserialPersonList.links.next != null)
+                {
+                    ++loopCount;
+
+                    startIndex = loopCount * 100;                   
+
+                    tempDeserialPersonList = getUsersPerPage(startIndex);
+                }
+                else
+                    break;
+            }//end while             
+
+            return deserialPersonList;
+        }//end GetUsers
+
+        /// <summary>
+        /// Gets a list of users in Jive for a specified URL
+        /// </summary>
+        /// <param name="jivePeopleUrl">a URI with specifed Paging and filters</param>
+        /// <returns>An object which contians a lsit of people returned from Jive</returns>
+        public JivePersonList getUsersPerPage(int startIndex)
+        {
+            string jivePeopleUrl = ConfigurationManager.AppSettings["JiveURI"];
+            jivePeopleUrl += "api/core/v3/people";
+            jivePeopleUrl += "?count=100&startIndex=" + startIndex;
+            jivePeopleUrl += "&fields=ID,displayName,jive.profile,jive.username,jive.federated,jive.enabled,emails,name,federated";
+
+            JivePersonList deserialPersonList = new JivePersonList();
+            string jiveResponse = string.Empty;
+
+            try
+            {
+                using (WebClient client = new WebClient())
+                {
+                    //("setting credentials");
+                    string credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes(ConfigurationManager.AppSettings["JiveAccount"] + ":" + ConfigurationManager.AppSettings["JivePassword"]));
+                    client.Headers[HttpRequestHeader.Authorization] = "Basic " + credentials;
+                    client.Headers[HttpRequestHeader.Accept] = "application/json";                   
+                    
+                    jiveResponse = client.DownloadString(jivePeopleUrl); 
+
+                    //invalid jason response... https://developers.jivesoftware.com/community/thread/2153                    
+                    jiveResponse = jiveResponse.Replace("throw 'allowIllegalResourceCall is false.';", String.Empty);                    
+
+                    var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
+                    deserialPersonList = serializer.Deserialize<JivePersonList>(jiveResponse);
+                }//end client                    
+            }
+            catch (Exception ex)
+            {
+                throw new System.ServiceModel.Web.WebFaultException<string>(ex.Message, HttpStatusCode.InternalServerError);
+            }
+
+            return deserialPersonList;
+        }//end getUsersPerPage
+
+        /// <summary>
+        /// Gets a user record for a specific user ID. Note is not able to update Admin accounts.
+        /// </summary>
+        /// <param name="id">Jive ID of the target user</param>
+        /// <returns>Returns a Data Object representing the Jive Person</returns>
+        [WebGet(UriTemplate = "Users/{ID}/")]
+        public JivePersonObject GetUser(string id)
+        {
+            int userId = 0;
+
+            #region Input validation
+            if (!(int.TryParse(id, out userId)))
+                throw new System.ServiceModel.Web.WebFaultException<string>("Invalid ID", HttpStatusCode.BadRequest);
+
+            if (userId < 1)
+                throw new System.ServiceModel.Web.WebFaultException<string>("Invalid ID", HttpStatusCode.BadRequest); 
+            #endregion
+
+            string jivePeopleUrl = ConfigurationManager.AppSettings["JiveURI"];
+                jivePeopleUrl += "api/core/v3/people/";
+                jivePeopleUrl += id;
+                jivePeopleUrl += "?fields=ID,displayName,jive.profile,jive.username";
+
+            string jiveResponse = string.Empty;
+            JivePersonObject deserialPerson = new JivePersonObject();
+
+            try
+            {
+                using (WebClient client = new WebClient())
+                {
+                    ts.TraceInformation("setting credentials"); 
+                    string credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes(ConfigurationManager.AppSettings["JiveAccount"] + ":" + ConfigurationManager.AppSettings["JivePassword"]));
+                    client.Headers[HttpRequestHeader.Authorization] = "Basic " + credentials;
+                    client.Headers[HttpRequestHeader.Accept] = "application/json";
+
+                    jiveResponse = client.DownloadString(jivePeopleUrl);
+
+                    //invalid json response...https://developers.jivesoftware.com/community/thread/2153
+                    jiveResponse = jiveResponse.Replace("throw 'allowIllegalResourceCall is false.';", String.Empty);
+
+                    var serializer = new System.Web.Script.Serialization.JavaScriptSerializer(); 
+                    deserialPerson = (JivePersonObject)serializer.Deserialize(jiveResponse, typeof(JivePersonObject));                    
+                }//end client                    
+            }
+            catch (Exception ex)
+            {
+                throw new System.ServiceModel.Web.WebFaultException<string>(ex.Message, HttpStatusCode.InternalServerError);
+            }
+
+            return deserialPerson;
+        }//end GetUser
+
+        /// <summary>
+        /// Updates the specified person object with the specified values
+        /// </summary>
+        /// <param name="person">Object to be updated</param>
+        /// <returns>The updated person JSON string</returns>
+        public string updateUserProfile(JivePersonObject person)
+        {            
+            var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
+            string personJSON = serializer.Serialize(person);
+
+            personJSON = personJSON.Replace("True", "true");//bug in Jive API fix the tense otherwise Jive will return a 500 
+            personJSON = personJSON.Replace("null",  "\"\"");//serializer sets value as null instead of empty string, adjust string
+
+            string jivePeopleUrl = ConfigurationManager.AppSettings["JiveURI"];
+            jivePeopleUrl += "api/core/v3/people/";
+            jivePeopleUrl += person.id;
+
+            string response = string.Empty;
+            try
+            {
+                using (WebClient client = new WebClient())
+                {                    
+                    string credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes(ConfigurationManager.AppSettings["JiveAccount"] + ":" + ConfigurationManager.AppSettings["JivePassword"]));
+                    client.Headers[HttpRequestHeader.Authorization] = "Basic " + credentials;
+                    client.Headers[HttpRequestHeader.Accept] = "application/json";
+                    client.Headers[HttpRequestHeader.ContentType] = "application/json";
+
+                    response = client.UploadString(jivePeopleUrl, "PUT", personJSON);
+                }//end client                    
+            }
+            catch (Exception ex)
+            {
+                return ex.Message;
+            }
+
+            return response;
+        }//end updateUserProfile
+
+        /// <summary>
+        /// Uploads the specified image for the specified person in next avilable photo slot
+        /// </summary>
+        /// <param name="person">Must contain the Jive ID as a property of the person</param>
+        /// <param name="imageBits">Byte Array that contains the jpg image that should be uploaded</param>
+        /// <returns>Temporary Image Object JSON string</returns>
+        public string updateImage(JivePersonObject person, byte[] imageBits)
+        {
+            //upload image
+            string jivePictureUrl = ConfigurationManager.AppSettings["JiveURI"];
+            jivePictureUrl += "api/core/v3/profileImages/temporary";            
+
+            string credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes(ConfigurationManager.AppSettings["JiveAccount"] + ":" + ConfigurationManager.AppSettings["JivePassword"]));
+
+            string boundary = "----------------------" + DateTime.Now.Ticks.ToString("x");
+
+            //code leveraged from http://www.paraesthesia.com/archive/2009/12/16/posting-multipartform-data-using-.net-webrequest.aspx
+            string HeaderTemplate = "--{0}\r\nContent-Disposition: form-data; name=\"{1}\"; filename=\"{2}\"\r\nContent-Type: {3}\r\n\r\n";
+            string formKey = "filename";
+            string header = String.Format(HeaderTemplate, boundary, formKey, "defProfileImage.jpg", "image/jpg");
+            byte[] headerbytes = Encoding.UTF8.GetBytes(header);
+
+            string responseString = string.Empty;
+
+            try
+            {
+                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(jivePictureUrl);
+                request.Method = "POST";
+                request.KeepAlive = true;
+                request.ContentType = "multipart/form-data; boundary=" + boundary;
+                request.Headers[HttpRequestHeader.Authorization] = "Basic " + credentials;
+
+                using (Stream requestStream = request.GetRequestStream())
+                {
+                    requestStream.Write(headerbytes, 0, headerbytes.Length);
+
+                    requestStream.Write(imageBits, 0, imageBits.Length);
+
+                    byte[] newlineBytes = Encoding.UTF8.GetBytes("\r\n");
+                    requestStream.Write(newlineBytes, 0, newlineBytes.Length);
+
+                    byte[] endBytes = System.Text.Encoding.UTF8.GetBytes("--" + boundary + "--");
+                    requestStream.Write(endBytes, 0, endBytes.Length);
+                    requestStream.Close();
+
+                    using (WebResponse response = request.GetResponse())
+                    {
+                        string tempImageLoc = response.Headers["Location"];
+                        using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+                        {
+                            responseString = reader.ReadToEnd();
+                        };
+						
+                        //set image URL 
+                        string jivePeopleUrl = ConfigurationManager.AppSettings["JiveURI"];
+                        jivePeopleUrl += "api/core/v3/people/";
+                        jivePeopleUrl += person.id + "/images";
+
+                        using (WebClient client = new WebClient())
+                        {
+                            ts.TraceInformation("setting credentials");
+                            client.Headers[HttpRequestHeader.Authorization] = "Basic " + credentials;
+                            client.Headers[HttpRequestHeader.Accept] = "application/json";                            
+
+                            System.Collections.Specialized.NameValueCollection myNameValueCollection = new System.Collections.Specialized.NameValueCollection();
+                            myNameValueCollection.Add("imageURI", tempImageLoc);
+
+                            byte[] setImageResponse = client.UploadValues(jivePeopleUrl, myNameValueCollection);
+                            ts.TraceInformation("set Image Response: " + setImageResponse.Length);
+                        }//end client  
+                    }//end response using
+                }//end request stream using
+            }//end try
+            catch (Exception ex)
+            {
+            }
+
+            return responseString;
+        }//end updateImage
+
+        [WebGet(UriTemplate = "Places/?term={term}")]
+        public JivePlaceList SearchPlaces(string term)
+        {
+            string jivePlacesUrl = ConfigurationManager.AppSettings["JiveURI"];
+            jivePlacesUrl += "api/core/v3/search/places";
+            jivePlacesUrl += "?filter=search(";
+            jivePlacesUrl += term;
+            jivePlacesUrl += ")&fields=description,displayName,followerCount,name,type,visibleToExternalContributors";
+
+            JivePlaceList deserialPlaceListObject = new JivePlaceList();
+
+            try
+            {
+                using (WebClient client = new WebClient())
+                {
+                    string credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes(ConfigurationManager.AppSettings["JiveAccount"] + ":" + ConfigurationManager.AppSettings["JivePassword"]));
+                    client.Headers[HttpRequestHeader.Authorization] = "Basic " + credentials;
+                    client.Headers[HttpRequestHeader.Accept] = "application/json";
+
+                    string jiveResponse = client.DownloadString(jivePlacesUrl);
+                    
+                    //invalid json response...https://developers.jivesoftware.com/community/thread/2153
+                    jiveResponse = jiveResponse.Replace("throw 'allowIllegalResourceCall is false.';", String.Empty);
+
+                    var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
+                    deserialPlaceListObject = (JivePlaceList)serializer.Deserialize(jiveResponse, typeof(JivePlaceList)); 
+
+                    return deserialPlaceListObject;
+                }//end client                    
+            }
+            catch (Exception ex)
+            {
+                throw new System.ServiceModel.Web.WebFaultException<string>(ex.Message, HttpStatusCode.InternalServerError);
+            }         
+        }//end SearchPlaces

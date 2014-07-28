@@ -1,0 +1,67 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Web;
+
+    public class JivePersonObject
+    {
+        public int id {get; set;}        
+        public string displayName { get; set; }
+        public JivePersonInfo jive { get; set; }        
+        public List<JiveEmails> emails { get; set; }
+        public JiveName name { get; set; } 
+        public JivePersonObject() { }
+    }//end class
+
+    public class JiveProfiles
+    {
+        public JiveProfiles() { }
+        public string value { get; set; }
+        public string jive_label { get; set; }
+    }//end class
+
+    public class JivePersonInfo{
+        public JivePersonInfo() { }
+        public string username { get; set; }
+        public JiveProfiles[] profile { get; set; }
+        public bool federated { get; set; }
+        public bool enabled { get; set; }
+    }//end class
+
+    public class JivePersonList
+    {
+        public JivePersonList() { }
+        public List<JivePersonObject> list { get; set; }
+        public JiveLinks links { get; set; }
+    }
+
+    public class JiveEmails
+    {
+        public JiveEmails(){}
+        public string value { get; set; }
+        public string type { get; set; }
+        public string jive_label { get; set; }
+        public string primary { get; set; }
+    }
+	
+    public class JiveName{
+        public JiveName(){}
+        public string familyName { get; set; }
+        public string formatted { get; set; }
+        public string givenName { get; set; }
+
+    }
+	
+    public class JiveProfileImage
+    {
+        public JiveProfileImage() { }        
+        public string type { get; set; }
+        public string filename { get; set; }
+    }
+	
+    public class JiveLinks
+    {
+        public JiveLinks() { }
+        public string next { get; set; }
+
+    }
